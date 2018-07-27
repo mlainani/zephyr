@@ -651,6 +651,18 @@ u16_t net_eth_get_vlan_tag(struct net_if *iface)
 	return NET_VLAN_TAG_UNSPEC;
 }
 
+bool net_eth_get_vlan_status(struct net_if *iface)
+{
+	struct ethernet_context *ctx = net_if_l2_data(iface);
+
+	if (ctx->vlan_enabled &&
+	    net_eth_get_vlan_tag(iface) != NET_VLAN_TAG_UNSPEC) {
+		return true;
+	}
+
+	return false;
+}
+
 static struct ethernet_vlan *get_vlan(struct ethernet_context *ctx,
 				      struct net_if *iface,
 				      u16_t vlan_tag)
@@ -717,6 +729,8 @@ int net_eth_vlan_enable(struct net_if *iface, u16_t tag)
 			ctx->vlan_enabled = NET_VLAN_MAX_COUNT;
 		}
 
+		ethernet_mgmt_raise_vlan_enabled_event(iface, tag);
+
 		return 0;
 	}
 
@@ -752,6 +766,8 @@ int net_eth_vlan_disable(struct net_if *iface, u16_t tag)
 	if (eth->vlan_setup) {
 		eth->vlan_setup(net_if_get_device(iface), iface, tag, false);
 	}
+
+	ethernet_mgmt_raise_vlan_disabled_event(iface, tag);
 
 	ctx->vlan_enabled--;
 	if (ctx->vlan_enabled < 0) {
@@ -851,6 +867,20 @@ void net_eth_set_ptp_port(struct net_if *iface, int port)
 	ctx->port = port;
 }
 #endif /* CONFIG_NET_GPTP */
+
+int net_eth_promisc_mode(struct net_if *iface, bool enable)
+{
+	struct ethernet_req_params params;
+
+	if (!(net_eth_get_hw_capabilities(iface) & ETHERNET_PROMISC_MODE)) {
+		return -ENOTSUP;
+	}
+
+	params.promisc_mode = enable;
+
+	return net_mgmt(NET_REQUEST_ETHERNET_SET_PROMISC_MODE, iface,
+			&params, sizeof(struct ethernet_req_params));
+}
 
 void ethernet_init(struct net_if *iface)
 {

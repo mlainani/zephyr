@@ -93,6 +93,34 @@ static int ethernet_set_config(u32_t mgmt_request,
 		memcpy(&config.mac_address, &params->mac_address,
 		       sizeof(struct net_eth_addr));
 		type = ETHERNET_CONFIG_TYPE_MAC_ADDRESS;
+	} else if (mgmt_request ==
+			NET_REQUEST_ETHERNET_SET_QAV_DELTA_BANDWIDTH) {
+		if (!is_hw_caps_supported(dev, ETHERNET_QAV)) {
+			return -ENOTSUP;
+		}
+
+		if (params->qav_queue_param.delta_bandwidth > 100) {
+			return -EINVAL;
+		}
+
+		memcpy(&config.qav_queue_param, &params->qav_queue_param,
+		       sizeof(struct ethernet_qav_queue_param));
+		type = ETHERNET_CONFIG_TYPE_QAV_DELTA_BANDWIDTH;
+	} else if (mgmt_request == NET_REQUEST_ETHERNET_SET_QAV_IDLE_SLOPE) {
+		if (!is_hw_caps_supported(dev, ETHERNET_QAV)) {
+			return -ENOTSUP;
+		}
+
+		memcpy(&config.qav_queue_param, &params->qav_queue_param,
+		       sizeof(struct ethernet_qav_queue_param));
+		type = ETHERNET_CONFIG_TYPE_QAV_IDLE_SLOPE;
+	} else if (mgmt_request == NET_REQUEST_ETHERNET_SET_PROMISC_MODE) {
+		if (!is_hw_caps_supported(dev, ETHERNET_PROMISC_MODE)) {
+			return -ENOTSUP;
+		}
+
+		config.promisc_mode = params->promisc_mode;
+		type = ETHERNET_CONFIG_TYPE_PROMISC_MODE;
 	} else {
 		return -EINVAL;
 	}
@@ -112,6 +140,15 @@ NET_MGMT_REGISTER_REQUEST_HANDLER(NET_REQUEST_ETHERNET_SET_DUPLEX,
 NET_MGMT_REGISTER_REQUEST_HANDLER(NET_REQUEST_ETHERNET_SET_MAC_ADDRESS,
 				  ethernet_set_config);
 
+NET_MGMT_REGISTER_REQUEST_HANDLER(NET_REQUEST_ETHERNET_SET_QAV_DELTA_BANDWIDTH,
+				  ethernet_set_config);
+
+NET_MGMT_REGISTER_REQUEST_HANDLER(NET_REQUEST_ETHERNET_SET_QAV_IDLE_SLOPE,
+				  ethernet_set_config);
+
+NET_MGMT_REGISTER_REQUEST_HANDLER(NET_REQUEST_ETHERNET_SET_PROMISC_MODE,
+				  ethernet_set_config);
+
 void ethernet_mgmt_raise_carrier_on_event(struct net_if *iface)
 {
 	net_mgmt_event_notify(NET_EVENT_ETHERNET_CARRIER_ON, iface);
@@ -120,4 +157,25 @@ void ethernet_mgmt_raise_carrier_on_event(struct net_if *iface)
 void ethernet_mgmt_raise_carrier_off_event(struct net_if *iface)
 {
 	net_mgmt_event_notify(NET_EVENT_ETHERNET_CARRIER_OFF, iface);
+}
+
+void ethernet_mgmt_raise_vlan_enabled_event(struct net_if *iface, u16_t tag)
+{
+#if defined(CONFIG_NET_MGMT_EVENT_INFO)
+	net_mgmt_event_notify_with_info(NET_EVENT_ETHERNET_VLAN_TAG_ENABLED,
+					iface, &tag, sizeof(tag));
+#else
+	net_mgmt_event_notify(NET_EVENT_ETHERNET_VLAN_TAG_ENABLED,
+			      iface);
+#endif
+}
+
+void ethernet_mgmt_raise_vlan_disabled_event(struct net_if *iface, u16_t tag)
+{
+#if defined(CONFIG_NET_MGMT_EVENT_INFO)
+	net_mgmt_event_notify_with_info(NET_EVENT_ETHERNET_VLAN_TAG_DISABLED,
+					iface, &tag, sizeof(tag));
+#else
+	net_mgmt_event_notify(NET_EVENT_ETHERNET_VLAN_TAG_DISABLED, iface);
+#endif
 }

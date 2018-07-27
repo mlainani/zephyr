@@ -12,9 +12,11 @@
  */
 
 #define _DEFAULT_SOURCE
+#define _XOPEN_SOURCE
 
 /* Host include files */
 #include <stdio.h>
+#include <stdlib.h>
 #include <stdarg.h>
 #include <errno.h>
 #include <string.h>
@@ -23,6 +25,7 @@
 #include <sys/ioctl.h>
 #include <sys/socket.h>
 #include <net/if.h>
+#include <time.h>
 
 #ifdef __linux
 #include <linux/if_tun.h>
@@ -37,6 +40,10 @@
 #include <zephyr/types.h>
 #include <sys_clock.h>
 #include <logging/sys_log.h>
+
+#if defined(CONFIG_NET_GPTP)
+#include <net/gptp.h>
+#endif
 
 #include "eth_native_posix_priv.h"
 
@@ -83,6 +90,7 @@ static int ssystem(const char *fmt, ...)
 {
 	char cmd[255];
 	va_list ap;
+	int ret;
 
 	va_start(ap, fmt);
 	vsnprintf(cmd, sizeof(cmd), fmt, ap);
@@ -91,7 +99,9 @@ static int ssystem(const char *fmt, ...)
 	printk("%s\n", cmd);
 	fflush(stdout);
 
-	return system(cmd);
+	ret = system(cmd);
+
+	return -WEXITSTATUS(ret);
 }
 
 int eth_setup_host(const char *if_name)
@@ -138,3 +148,29 @@ ssize_t eth_write_data(int fd, void *buf, size_t buf_len)
 {
 	return write(fd, buf, buf_len);
 }
+
+#if defined(CONFIG_NET_GPTP)
+int eth_clock_gettime(struct net_ptp_time *time)
+{
+	struct timespec tp;
+	int ret;
+
+	ret = clock_gettime(CLOCK_MONOTONIC_RAW, &tp);
+	if (ret < 0) {
+		return -errno;
+	}
+
+	time->second = tp.tv_sec;
+	time->nanosecond = tp.tv_nsec;
+
+	return 0;
+}
+#endif /* CONFIG_NET_GPTP */
+
+#if defined(CONFIG_NET_PROMISCUOUS_MODE)
+int eth_promisc_mode(const char *if_name, bool enable)
+{
+	return ssystem("ip link set dev %s promisc %s",
+		       if_name, enable ? "on" : "off");
+}
+#endif /* CONFIG_NET_PROMISCUOUS_MODE */

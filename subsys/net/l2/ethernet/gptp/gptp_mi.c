@@ -16,6 +16,50 @@
 #include "gptp_state.h"
 #include "gptp_private.h"
 
+#if defined(CONFIG_NET_DEBUG_GPTP) &&			\
+	(CONFIG_SYS_LOG_NET_LEVEL > SYS_LOG_LEVEL_INFO)
+static const char * const state2str(enum gptp_port_state state)
+{
+	switch (state) {
+	case GPTP_PORT_INITIALIZING:
+		return "INITIALIZING";
+	case GPTP_PORT_FAULTY:
+		return "FAULTY";
+	case GPTP_PORT_DISABLED:
+		return "DISABLED";
+	case GPTP_PORT_LISTENING:
+		return "LISTENING";
+	case GPTP_PORT_PRE_MASTER:
+		return "PRE_MASTER";
+	case GPTP_PORT_MASTER:
+		return "MASTER";
+	case GPTP_PORT_PASSIVE:
+		return "PASSIVE";
+	case GPTP_PORT_UNCALIBRATED:
+		return "UNCALIBRATED";
+	case GPTP_PORT_SLAVE:
+		return "SLAVE";
+	}
+
+	return "<unknown>";
+}
+#endif
+
+void gptp_change_port_state(int port, enum gptp_port_state state)
+{
+	struct gptp_global_ds *global_ds = GPTP_GLOBAL_DS();
+
+	if (global_ds->selected_role[port] == state) {
+		return;
+	}
+
+	NET_DBG("[%d] state %s -> %s", port,
+		state2str(global_ds->selected_role[port]),
+		state2str(state));
+
+	global_ds->selected_role[port] = state;
+};
+
 static void gptp_mi_half_sync_itv_timeout(struct k_timer *timer)
 {
 	struct gptp_pss_send_state *state;
@@ -211,7 +255,8 @@ void gptp_mi_init_state_machine(void)
 {
 	int port;
 
-	for (port = GPTP_PORT_START; port < GPTP_PORT_END; port++) {
+	for (port = GPTP_PORT_START;
+	     port < (GPTP_PORT_START + CONFIG_NET_GPTP_NUM_PORTS); port++) {
 		gptp_mi_init_port_sync_sync_rcv_sm(port);
 		gptp_mi_init_port_sync_sync_send_sm(port);
 		gptp_mi_init_port_announce_rcv_sm(port);
@@ -224,6 +269,30 @@ void gptp_mi_init_state_machine(void)
 	gptp_mi_init_clock_slave_sync_sm();
 	gptp_mi_init_port_role_selection_sm();
 	gptp_mi_init_clock_master_sync_rcv_sm();
+}
+
+u64_t gptp_get_current_time_nanosecond(int port)
+{
+	struct device *clk;
+
+	clk = net_eth_get_ptp_clock(GPTP_PORT_IFACE(port));
+	if (clk) {
+		struct net_ptp_time tm = {};
+
+		ptp_clock_get(clk, &tm);
+
+		if (tm.second == 0 && tm.nanosecond == 0) {
+			goto use_uptime;
+		}
+
+		return gptp_timestamp_to_nsec(&tm);
+	}
+
+use_uptime:
+	/* A workaround if clock cannot be found. Note that accuracy is
+	 * only in milliseconds.
+	 */
+	return k_uptime_get() * 1000000;
 }
 
 static void gptp_mi_pss_rcv_compute(int port)
@@ -250,7 +319,7 @@ static void gptp_mi_pss_rcv_compute(int port)
 
 	memcpy(&pss->sync_info, sync_rcv, sizeof(struct gptp_md_sync_info));
 
-	pss->sync_receipt_timeout_time = GPTP_GET_CURRENT_TIME_NANOSECOND();
+	pss->sync_receipt_timeout_time = gptp_get_current_time_nanosecond(port);
 	pss->sync_receipt_timeout_time +=
 		(port_ds->sync_receipt_timeout_time_itv >> 16);
 
@@ -455,7 +524,7 @@ static void gptp_mi_pss_send_state_machine(int port)
 			state->send_sync_receipt_timeout_timer_expired = false;
 
 			duration = (state->last_sync_receipt_timeout_time -
-				    GPTP_GET_CURRENT_TIME_NANOSECOND()) /
+				    gptp_get_current_time_nanosecond(port)) /
 				(NSEC_PER_USEC * USEC_PER_MSEC);
 
 			k_timer_start(&state->send_sync_receipt_timeout_timer,
@@ -603,6 +672,13 @@ static void gptp_update_local_port_clock(void)
 
 	port_ds = GPTP_PORT_DS(port);
 
+	/* Check if the last neighbor rate ratio can still be used */
+	if (!port_ds->neighbor_rate_ratio_valid) {
+		return;
+	}
+
+	port_ds->neighbor_rate_ratio_valid = false;
+
 	second_diff = global_ds->sync_receipt_time.second -
 		(global_ds->sync_receipt_local_time / NSEC_PER_SEC);
 	nanosecond_diff = global_ds->sync_receipt_time.nanosecond -
@@ -613,6 +689,16 @@ static void gptp_update_local_port_clock(void)
 		return;
 	}
 
+	if (second_diff > 0 && nanosecond_diff < 0) {
+		second_diff--;
+		nanosecond_diff = NSEC_PER_SEC + nanosecond_diff;
+	}
+
+	if (second_diff < 0 && nanosecond_diff > 0) {
+		second_diff++;
+		nanosecond_diff = -NSEC_PER_SEC + nanosecond_diff;
+	}
+
 	ptp_clock_rate_adjust(clk, port_ds->neighbor_rate_ratio);
 
 	/* If time difference is too high, set the clock value.
@@ -621,11 +707,21 @@ static void gptp_update_local_port_clock(void)
 	if (second_diff || (second_diff == 0 &&
 			    (nanosecond_diff < -5000 ||
 			     nanosecond_diff > 5000))) {
+		bool underflow = false;
+
 		key = irq_lock();
 		ptp_clock_get(clk, &tm);
+
 		tm.second += second_diff;
+
+		if (nanosecond_diff < 0 &&
+		    tm.nanosecond < -nanosecond_diff) {
+			underflow = true;
+		}
+
 		tm.nanosecond += nanosecond_diff;
-		if (tm.nanosecond < 0) {
+
+		if (underflow) {
 			tm.second--;
 			tm.nanosecond += NSEC_PER_SEC;
 		} else if (tm.nanosecond >= NSEC_PER_SEC) {
@@ -1095,7 +1191,7 @@ static void gptp_updt_role_disabled_tree(void)
 
 	/* Set all elements of the selectedRole array to DisabledPort. */
 	for (port = GPTP_PORT_START; port < GPTP_PORT_END; port++) {
-		global_ds->selected_role[port] = GPTP_PORT_DISABLED;
+		gptp_change_port_state(port, GPTP_PORT_DISABLED);
 	}
 
 	/* Set lastGmPriority to all ones. */
@@ -1259,16 +1355,17 @@ static void update_bmca(int port,
 
 	switch (bmca_data->info_is) {
 	case GPTP_INFO_IS_DISABLED:
-		global_ds->selected_role[port] = GPTP_PORT_DISABLED;
+		gptp_change_port_state(port, GPTP_PORT_DISABLED);
 		break;
 
 	case GPTP_INFO_IS_AGED:
 		bmca_data->updt_info = true;
-		global_ds->selected_role[port] = GPTP_PORT_MASTER;
+		gptp_change_port_state(port, GPTP_PORT_MASTER);
 		break;
 
 	case GPTP_INFO_IS_MINE:
-		global_ds->selected_role[port] = GPTP_PORT_MASTER;
+		gptp_change_port_state(port, GPTP_PORT_MASTER);
+
 		if ((memcmp(&bmca_data->port_priority,
 			    &bmca_data->master_priority,
 			    sizeof(struct gptp_priority_vector)) != 0) ||
@@ -1284,7 +1381,7 @@ static void update_bmca(int port,
 			/* gmPriorityVector is now derived from
 			 * portPriorityVector.
 			 */
-			global_ds->selected_role[port] = GPTP_PORT_SLAVE;
+			gptp_change_port_state(port, GPTP_PORT_SLAVE);
 			bmca_data->updt_info = false;
 		} else if (memcmp(&bmca_data->port_priority,
 				  &bmca_data->master_priority,
@@ -1292,7 +1389,7 @@ static void update_bmca(int port,
 			/* The masterPriorityVector is not better than
 			 * the portPriorityVector.
 			 */
-			global_ds->selected_role[port] = GPTP_PORT_PASSIVE;
+			gptp_change_port_state(port, GPTP_PORT_PASSIVE);
 
 			if (memcmp(bmca_data->port_priority.src_port_id.clk_id,
 				   default_ds->clk_id,
@@ -1307,7 +1404,7 @@ static void update_bmca(int port,
 				bmca_data->updt_info = false;
 			}
 		} else {
-			global_ds->selected_role[port] = GPTP_PORT_MASTER;
+			gptp_change_port_state(port, GPTP_PORT_MASTER);
 			bmca_data->updt_info = true;
 		}
 
@@ -1372,13 +1469,13 @@ static void gptp_updt_roles_tree(void)
 	/* Assign the port role for port 0. */
 	for (port = GPTP_PORT_START; port < GPTP_PORT_END; port++) {
 		if (global_ds->selected_role[port] == GPTP_PORT_SLAVE) {
-			global_ds->selected_role[0] = GPTP_PORT_PASSIVE;
+			gptp_change_port_state(0, GPTP_PORT_PASSIVE);
 			break;
 		}
 	}
 
 	if (port == GPTP_PORT_END) {
-		global_ds->selected_role[0] = GPTP_PORT_SLAVE;
+		gptp_change_port_state(0, GPTP_PORT_SLAVE);
 	}
 
 	/* If current system is the Grand Master, set pathTrace array. */

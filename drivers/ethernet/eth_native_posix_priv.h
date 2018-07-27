@@ -18,4 +18,20 @@ int eth_wait_data(int fd);
 ssize_t eth_read_data(int fd, void *buf, size_t buf_len);
 ssize_t eth_write_data(int fd, void *buf, size_t buf_len);
 
+#if defined(CONFIG_NET_GPTP)
+int eth_clock_gettime(struct net_ptp_time *time);
+#endif
+
+#if defined(CONFIG_NET_PROMISCUOUS_MODE)
+int eth_promisc_mode(const char *if_name, bool enable);
+#else
+static inline int eth_promisc_mode(const char *if_name, bool enable)
+{
+	ARG_UNUSED(if_name);
+	ARG_UNUSED(enable);
+
+	return -ENOTSUP;
+}
+#endif
+
 #endif /* _ETH_NATIVE_POSIX_PRIV_H */

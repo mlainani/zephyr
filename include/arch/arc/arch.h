@@ -16,10 +16,6 @@
 #ifndef _ARC_ARCH__H_
 #define _ARC_ARCH__H_
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 #include <generated_dts_board.h>
 #include <sw_isr_table.h>
 #ifdef CONFIG_CPU_ARCV2
@@ -32,6 +28,10 @@ extern "C" {
 #include <arch/arc/v2/arcv2_irq_unit.h>
 #include <arch/arc/v2/asm_inline.h>
 #include <arch/arc/v2/addr_types.h>
+#endif
+
+#ifdef __cplusplus
+extern "C" {
 #endif
 
 #if defined(CONFIG_MPU_STACK_GUARD) || defined(CONFIG_USERSPACE)
@@ -89,12 +89,15 @@ extern "C" {
 		sym[POW2_CEIL(STACK_SIZE_ALIGN(size)) + \
 		+  STACK_GUARD_SIZE + CONFIG_PRIVILEGED_STACK_SIZE]
 
+#define _ARCH_THREAD_STACK_LEN(size) \
+	    (POW2_CEIL(STACK_SIZE_ALIGN(size)) + \
+	     max(POW2_CEIL(STACK_SIZE_ALIGN(size)), \
+		 POW2_CEIL(STACK_GUARD_SIZE + CONFIG_PRIVILEGED_STACK_SIZE)))
+
 #define _ARCH_THREAD_STACK_ARRAY_DEFINE(sym, nmemb, size) \
 	struct _k_thread_stack_element __kernel_noinit \
 		__aligned(POW2_CEIL(STACK_SIZE_ALIGN(size))) \
-		sym[nmemb][POW2_CEIL(STACK_SIZE_ALIGN(size)) + \
-		+ max(POW2_CEIL(STACK_SIZE_ALIGN(size)), \
-		POW2_CEIL(STACK_GUARD_SIZE + CONFIG_PRIVILEGED_STACK_SIZE))]
+		sym[nmemb][_ARCH_THREAD_STACK_LEN(size)]
 
 #define _ARCH_THREAD_STACK_MEMBER(sym, size) \
 	struct _k_thread_stack_element \
@@ -109,10 +112,12 @@ extern "C" {
 		sym[size + \
 		+ STACK_GUARD_SIZE + CONFIG_PRIVILEGED_STACK_SIZE]
 
+#define _ARCH_THREAD_STACK_LEN(size) \
+		((size) + STACK_GUARD_SIZE + CONFIG_PRIVILEGED_STACK_SIZE)
+
 #define _ARCH_THREAD_STACK_ARRAY_DEFINE(sym, nmemb, size) \
 	struct _k_thread_stack_element __kernel_noinit __aligned(STACK_ALIGN) \
-		sym[nmemb][size + \
-		+ STACK_GUARD_SIZE + CONFIG_PRIVILEGED_STACK_SIZE]
+		sym[nmemb][_ARCH_THREAD_STACK_LEN(size)]
 
 #define _ARCH_THREAD_STACK_MEMBER(sym, size) \
 	struct _k_thread_stack_element __aligned(STACK_ALIGN) \
@@ -133,9 +138,11 @@ extern "C" {
 	struct _k_thread_stack_element __kernel_noinit __aligned(STACK_ALIGN) \
 		sym[size + STACK_GUARD_SIZE]
 
+#define _ARCH_THREAD_STACK_LEN(size) ((size) + STACK_GUARD_SIZE)
+
 #define _ARCH_THREAD_STACK_ARRAY_DEFINE(sym, nmemb, size) \
 	struct _k_thread_stack_element __kernel_noinit __aligned(STACK_ALIGN) \
-		sym[nmemb][size + STACK_GUARD_SIZE]
+		sym[nmemb][_ARCH_THREAD_STACK_LEN(size)]
 
 #define _ARCH_THREAD_STACK_MEMBER(sym, size) \
 	struct _k_thread_stack_element __aligned(STACK_ALIGN) \

@@ -75,6 +75,12 @@ enum ethernet_hw_caps {
 
 	/** IEEE 802.1AS (gPTP) clock supported */
 	ETHERNET_PTP			= BIT(8),
+
+	/** IEEE 802.1Qav (credit-based shaping) supported */
+	ETHERNET_QAV			= BIT(9),
+
+	/** Promiscuous mode supported */
+	ETHERNET_PROMISC_MODE		= BIT(10),
 };
 
 enum ethernet_config_type {
@@ -82,6 +88,17 @@ enum ethernet_config_type {
 	ETHERNET_CONFIG_TYPE_LINK,
 	ETHERNET_CONFIG_TYPE_DUPLEX,
 	ETHERNET_CONFIG_TYPE_MAC_ADDRESS,
+	ETHERNET_CONFIG_TYPE_QAV_DELTA_BANDWIDTH,
+	ETHERNET_CONFIG_TYPE_QAV_IDLE_SLOPE,
+	ETHERNET_CONFIG_TYPE_PROMISC_MODE,
+};
+
+struct ethernet_qav_queue_param {
+	int queue_id;
+	union {
+		unsigned int delta_bandwidth;
+		unsigned int idle_slope;
+	};
 };
 
 struct ethernet_config {
@@ -89,6 +106,7 @@ struct ethernet_config {
 	union {
 		bool auto_negotiation;
 		bool full_duplex;
+		bool promisc_mode;
 
 		struct {
 			bool link_10bt;
@@ -97,6 +115,8 @@ struct ethernet_config {
 		} l;
 
 		struct net_eth_addr mac_address;
+
+		struct ethernet_qav_queue_param qav_queue_param;
 	};
 /* @endcond */
 };
@@ -113,7 +133,7 @@ struct ethernet_api {
 	 * should be set by driver if statistics needs to be collected
 	 * for that driver.
 	 */
-	struct net_stats_eth *stats;
+	struct net_stats_eth *(*get_stats)(struct device *dev);
 #endif
 
 	/** Get the device capabilities */
@@ -369,6 +389,15 @@ struct net_if *net_eth_get_vlan_iface(struct net_if *iface, u16_t tag);
 bool net_eth_is_vlan_enabled(struct ethernet_context *ctx,
 			     struct net_if *iface);
 
+/**
+ * @brief Get VLAN status for a given network interface (enabled or not).
+ *
+ * @param iface Network interface
+ *
+ * @return True if VLAN is enabled for this network interface, false if not.
+ */
+bool net_eth_get_vlan_status(struct net_if *iface);
+
 #define ETH_NET_DEVICE_INIT(dev_name, drv_name, init_fn,		 \
 			    data, cfg_info, prio, api, mtu)		 \
 	DEVICE_AND_API_INIT(dev_name, drv_name, init_fn, data,		 \
@@ -404,6 +433,11 @@ struct net_if *net_eth_get_vlan_iface(struct net_if *iface, u16_t tag)
 {
 	return NULL;
 }
+
+static inline bool net_eth_get_vlan_status(struct net_if *iface)
+{
+	return false;
+}
 #endif /* CONFIG_NET_VLAN */
 
 /**
@@ -438,6 +472,17 @@ void net_eth_carrier_on(struct net_if *iface);
  * @param iface Network interface
  */
 void net_eth_carrier_off(struct net_if *iface);
+
+/**
+ * @brief Set promiscuous mode either ON or OFF.
+ *
+ * @param iface Network interface
+ *
+ * @param enable on (true) or off (false)
+ *
+ * @return 0 if mode set or unset was successful, <0 otherwise.
+ */
+int net_eth_promisc_mode(struct net_if *iface, bool enable);
 
 /**
  * @brief Return PTP clock that is tied to this ethernet network interface.
