@@ -52,6 +52,8 @@ features:
 +-----------+------------+--------------------------------------+
 | USB       | on-chip    | USB device                           |
 +-----------+------------+--------------------------------------+
+| EIC       | on-chip    | External Interrupt Controller        |
++-----------+------------+--------------------------------------+
 
 Other hardware features are not currently supported by Zephyr.
 
@@ -100,6 +102,46 @@ The SAMD21 MCU has a USB device port that can be used to communicate
 with a host PC.  See the :ref:`usb-samples` sample applications for
 more, such as the :ref:`usb_cdc-acm` sample which sets up a virtual
 serial port that echos characters back to the host PC.
+
+EIC
+===
+
+The External Interrupt Controller peripheral allows I/O pins to be configured as
+interrupt lines. It is enabled from the GPIO driver configuration menu. The
+interrupt -to- I/O pin mapping depends on both the MCU device variant pin count
+and the peripheral signals multiplexing to the I/O pins for the considered
+board. On Atmel SAMD21G for instance, both PA00 and PA16 can be assigned to
+external interrupt 0. On the Arduino MKR Zero, which is based on this device
+variant, PA00 is used for another purpose which leaves the user with PA16 as the
+only choice for this particular external interrupt. The value 16 would thus need
+to be configured for external interrupt 0. Below is the mapping table for the
+Arduino MKR Zero. Also note that, as for other peripherals, the pin multiplexing
+definition for the board must be mapping the considered I/O pin to the EIC.
+
++--------+------------+------------+---------+
+| EXTINT | MKZero Pin | PORT Group | I/O Pin |
++========+============+============+=========+
+| 0      |  MOSI      | PORTA      | 16      |
++--------+------------+------------+---------+
+| 1      |  SCK       | PORTA      | 17      |
++--------+------------+------------+---------+
+| 2      |  A1        | PORTB      | 2       |
++--------+------------+------------+---------+
+| 3      |  A2        | PORTB      | 3       |
++--------+------------+------------+---------+
+| 4      |  D6        | PORTA      | 20      |
++--------+------------+------------+---------+
+| 5      |  D7        | PORTA      | 21      |
++--------+------------+------------+---------+
+| 6      |  D0        | PORTA      | 22      |
++--------+------------+------------+---------+
+| 7      |  D1        | PORTA      | 23      |
++--------+------------+------------+---------+
+| 10     |  D4        | PORTB      | 10      |
++--------+------------+------------+---------+
+| 11     |  D5        | PORTB      | 11      |
++--------+------------+------------+---------+
+
 
 Programming and Debugging
 *************************

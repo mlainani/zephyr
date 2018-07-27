@@ -61,3 +61,7 @@
 &usb0 {
 	status = "ok";
 };
+
+&eic0 {
+      status = "ok";
+};

@@ -17,12 +17,14 @@ CONFIG_SOC_ATMEL_SAMD_XOSC32K=y
 CONFIG_SOC_ATMEL_SAMD_XOSC32K_AS_MAIN=y
 CONFIG_SPI=y
 CONFIG_SPI_SAM0=y
+
 # The below definition is not used in the SAM0 SERCOM SPI driver code. Its sole
 # purpose seems to be reflecting the board DTS configuration in the
 # configuration interface.
 CONFIG_SPI_1=y
 CONFIG_I2C=y
 CONFIG_I2C_SAM0=y
+
 # The below definition is not used in the SAM0 SERCOM I2C driver code. Its sole
 # purpose seems to be reflecting the board DTS configuration in the
 # configuration interface.
@@ -31,11 +33,20 @@ CONFIG_PINMUX=y
 CONFIG_PINMUX_SAM0=y
 CONFIG_USB=y
 CONFIG_USB_DC_SAM0=y
+
+# External Interrupt Controller
+CONFIG_EIC_SAM0=y
+
+# Map External interrupt 4 to pin D6
+CONFIG_GPIO_SAM0_PORTA_EXTINT_4=y
+CONFIG_GPIO_SAM0_PORTA_EXTINT_4_PIN=20
+
 # FXAS21002C gyroscope I2C address on the Adafruit Precision NXP 9-DOF breakout
 # board
-CONFIG_FXAS21002_I2C_NAME="SERCOM0"
-CONFIG_FXAS21002_I2C_ADDRESS=0x21
-CONFIG_FXAS21002_RANGE=3
-# Arduino MKRZero pin D6
-CONFIG_FXAS21002_GPIO_NAME="PORTA"
-CONFIG_FXAS21002_GPIO_PIN=20
+# CONFIG_FXAS21002_I2C_NAME="SERCOM0"
+# CONFIG_FXAS21002_I2C_ADDRESS=0x21
+# CONFIG_FXAS21002_RANGE=3
+
+
+# CONFIG_FXAS21002_GPIO_NAME="PORTA"
+# CONFIG_FXAS21002_GPIO_PIN=20
