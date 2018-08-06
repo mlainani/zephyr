@@ -115,8 +115,9 @@ external interrupt 0. On the Arduino MKR Zero, which is based on this device
 variant, PA00 is used for another purpose which leaves the user with PA16 as the
 only choice for this particular external interrupt. The value 16 would thus need
 to be configured for external interrupt 0. Below is the mapping table for the
-Arduino MKR Zero. Also note that, as for other peripherals, the pin multiplexing
-definition for the board must be mapping the considered I/O pin to the EIC.
+Arduino MKR Zero. Also note that, unlike for other peripherals, the pin
+multiplexing is performed by the GPIO driver as part of the I/O pin
+configuration, that is, no code is needed in pinmux.c.
 
 +--------+------------+------------+---------+
 | EXTINT | MKZero Pin | PORT Group | I/O Pin |
