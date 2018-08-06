@@ -11,9 +11,6 @@ static int board_pinmux_init(struct device *dev)
 {
 	struct device *muxa = device_get_binding(CONFIG_PINMUX_SAM0_A_LABEL);
 	struct device *muxb = device_get_binding(CONFIG_PINMUX_SAM0_B_LABEL);
-#if CONFIG_EIC_SAM0
-	struct device *mux = NULL;
-#endif
 
 	ARG_UNUSED(dev);
 
@@ -89,74 +86,6 @@ static int board_pinmux_init(struct device *dev)
 	pinmux_pin_set(muxa, 25, PINMUX_FUNC_G);
 	pinmux_pin_set(muxa, 24, PINMUX_FUNC_G);
 #endif
-
-#if CONFIG_EIC_SAM0
-	
-#if CONFIG_GPIO_SAM0_PORTA_EXTINT_4
-	/* D6 - PA20 - EXTINT[4] */
-	mux = device_get_binding(CONFIG_GPIO_SAM0_PORTA_LABEL);
-	if (!mux) {
-		printk("Crap!");
-		return -1;
-	}
-	/*
-	 * No point in testing return code as SoC API implementation for the
-	 * function always return 0.
-	 */
-	pinmux_pin_set(mux, CONFIG_GPIO_SAM0_PORTA_EXTINT_4_PIN,
-		       PINMUX_FUNC_A);
-#endif
-
-#if CONFIG_GPIO_SAM0_PORTA_EXTINT_0 || CONFIG_GPIO_SAM0_PORTB_EXTINT_0
-#error Pin muxing for external interrupt 0 is not configured
-#endif
-#if CONFIG_GPIO_SAM0_PORTA_EXTINT_1 || CONFIG_GPIO_SAM0_PORTB_EXTINT_1
-#error Pin muxing for external interrupt 1 is not configured
-#endif
-#if CONFIG_GPIO_SAM0_PORTA_EXTINT_2 || CONFIG_GPIO_SAM0_PORTB_EXTINT_2
-#error Pin muxing for external interrupt 2 is not configured
-#endif
-#if CONFIG_GPIO_SAM0_PORTA_EXTINT_3 || CONFIG_GPIO_SAM0_PORTB_EXTINT_3
-#error Pin muxing for external interrupt 3 is not configured
-#endif
-#if CONFIG_GPIO_SAM0_PORTB_EXTINT_4
-#error Pin muxing for external interrupt 4 is not configured
-#endif
-#if CONFIG_GPIO_SAM0_PORTA_EXTINT_5 || CONFIG_GPIO_SAM0_PORTB_EXTINT_5
-#error Pin muxing for external interrupt 5 is not configured
-#endif
-#if CONFIG_GPIO_SAM0_PORTA_EXTINT_6 || CONFIG_GPIO_SAM0_PORTB_EXTINT_6
-#error Pin muxing for external interrupt 6 is not configured
-#endif
-#if CONFIG_GPIO_SAM0_PORTA_EXTINT_7 || CONFIG_GPIO_SAM0_PORTB_EXTINT_7
-#error Pin muxing for external interrupt 7 is not configured
-#endif
-#if CONFIG_GPIO_SAM0_PORTA_EXTINT_8 || CONFIG_GPIO_SAM0_PORTB_EXTINT_8
-#error Pin muxing for external interrupt 8 is not configured
-#endif
-#if CONFIG_GPIO_SAM0_PORTA_EXTINT_9 || CONFIG_GPIO_SAM0_PORTB_EXTINT_9
-#error Pin muxing for external interrupt 9 is not configured
-#endif
-#if CONFIG_GPIO_SAM0_PORTA_EXTINT_10 || CONFIG_GPIO_SAM0_PORTB_EXTINT_10
-#error Pin muxing for external interrupt 10 is not configured
-#endif
-#if CONFIG_GPIO_SAM0_PORTA_EXTINT_11 || CONFIG_GPIO_SAM0_PORTB_EXTINT_11
-#error Pin muxing for external interrupt 11 is not configured
-#endif
-#if CONFIG_GPIO_SAM0_PORTA_EXTINT_12 || CONFIG_GPIO_SAM0_PORTB_EXTINT_12
-#error Pin muxing for external interrupt 12 is not configured
-#endif
-#if CONFIG_GPIO_SAM0_PORTA_EXTINT_13 || CONFIG_GPIO_SAM0_PORTB_EXTINT_13
-#error Pin muxing for external interrupt 13 is not configured
-#endif
-#if CONFIG_GPIO_SAM0_PORTA_EXTINT_14 || CONFIG_GPIO_SAM0_PORTB_EXTINT_14
-#error Pin muxing for external interrupt 14 is not configured
-#endif
-#if CONFIG_GPIO_SAM0_PORTA_EXTINT_15 || CONFIG_GPIO_SAM0_PORTB_EXTINT_15
-#error Pin muxing for external interrupt 15 is not configured
-#endif
-
-#endif /* CONFIG_EIC_SAM0 */
 
 	return 0;
 }

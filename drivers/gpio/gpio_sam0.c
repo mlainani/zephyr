@@ -10,15 +10,15 @@
 #include <gpio.h>
 #include <soc.h>
 
-#define SYS_LOG_LEVEL SYS_LOG_LEVEL_DEBUG
-#include <logging/sys_log.h>
-
 /* External Interrupt Controller support */
 #if CONFIG_EIC_SAM0
 
-static bool eic_peripheral_is_enabled;
-
 #include "gpio_utils.h"
+#define SYS_LOG_LEVEL SYS_LOG_LEVEL_DEBUG
+#include <logging/sys_log.h>
+#include <pinmux.h>
+
+static bool eic_peripheral_is_enabled;
 
 struct extint
 {
@@ -195,11 +195,6 @@ static int gpio_sam0_config(struct device *dev, int access_op, u32_t pin,
 	/* Direction */
 	if (is_out) {
 		regs->DIRSET.bit.DIRSET = mask;
-		if (flags & GPIO_INT) {
-			SYS_LOG_ERR("interrupt config on output pin %s[%02u]!",
-				dev->config->name, pin);
-			return -EINVAL;
-		}
 	} else {
 		regs->DIRCLR.bit.DIRCLR = mask;
 	}
@@ -229,18 +224,27 @@ static int gpio_sam0_config(struct device *dev, int access_op, u32_t pin,
 
 	if (flags & GPIO_INT) {
 #if CONFIG_EIC_SAM0
-		int i;
 		int extint_num = -1;
-		u8_t bank_num = 0; /* EIC config register bank number*/
-		u32_t pos;
+		int idx, pos; 
+
+		/* Cheap sanity check */
+		if (is_out) {
+			SYS_LOG_ERR("interrupt config on output pin %s[%02u]!",
+				dev->config->name, pin);
+			return -EINVAL;
+		}
 
 		SYS_LOG_DBG("flags 0x%x", flags);
 
-		for (i = 0; i < config->num_extints; i++)
+		/*
+		 * Look for a matching entry in the interrupt -to- I/O pin
+		 * mapping table.
+		 */
+		for (int i = 0; i < config->num_extints; i++)
 		{
 			if (pin == config->extints[i].pin) {
 				extint_num = config->extints[i].num;
-				SYS_LOG_DBG("%s[%02u] is assigned to EXTINT[%u]",
+				SYS_LOG_DBG("%s[%02u] assigned to EXTINT[%u]",
 					    dev->config->name, pin,
 					    config->extints[i].num);
 				break;
@@ -248,52 +252,72 @@ static int gpio_sam0_config(struct device *dev, int access_op, u32_t pin,
 		}
 
 		if (extint_num < 0) {
-			SYS_LOG_ERR("%s[%02u] is not assigned to an EXTINT",
+			SYS_LOG_ERR("%s[%02u] not assigned to an EXTINT",
 				    dev->config->name, pin);
 			return -EINVAL;
 		}
 
+		/* Enable peripheral multiplexer selection */
+		regs->PINCFG[pin].bit.PMUXEN = 1;
+
+		/* Assign I/O pin to the EIC */
+		if (pin & 1) {
+			regs->PMUX[pin / 2].bit.PMUXO = PINMUX_FUNC_A;
+		}
+		else
+		{
+			regs->PMUX[pin / 2].bit.PMUXE = PINMUX_FUNC_A;
+		}
+
+		/*
+		 * Determine configuration register index and offset for the
+		 * external interrupt.
+		 */
 		if (extint_num > 7) {
-			bank_num = 1;
+			idx = 1;
 			pos = (extint_num - 8) << 2;
 		}
 		else {
+			idx = 0;
 			pos = extint_num << 2;
 		}
 
+		/* Configure detection mode */
 		if (flags & GPIO_INT_EDGE) {
 			if (flags & GPIO_INT_DOUBLE_EDGE) {
-				EIC->CONFIG[bank_num].reg |= EIC_CONFIG_SENSE0_BOTH_Val << pos;
+				EIC->CONFIG[idx].reg |= EIC_CONFIG_SENSE0_BOTH_Val << pos;
 				SYS_LOG_DBG("Edge - Double");
 			}
 			else if (flags & GPIO_INT_ACTIVE_HIGH) {
-				EIC->CONFIG[bank_num].reg |= EIC_CONFIG_SENSE0_RISE_Val << pos;
+				EIC->CONFIG[idx].reg |= EIC_CONFIG_SENSE0_RISE_Val << pos;
 				SYS_LOG_DBG("Edge - High");
 			}
 			else {
-				EIC->CONFIG[bank_num].reg |= EIC_CONFIG_SENSE0_FALL_Val << pos;
+				EIC->CONFIG[idx].reg |= EIC_CONFIG_SENSE0_FALL_Val << pos;
 				SYS_LOG_DBG("Edge - Low");
 			}
 		}
 		else {
 			if (flags & GPIO_INT_ACTIVE_HIGH) {
-				EIC->CONFIG[bank_num].reg |= EIC_CONFIG_SENSE0_HIGH_Val << pos;
+				EIC->CONFIG[idx].reg |= EIC_CONFIG_SENSE0_HIGH_Val << pos;
 				SYS_LOG_DBG("Level - High");
 			}
 			else {
-				EIC->CONFIG[bank_num].reg |= EIC_CONFIG_SENSE0_LOW_Val << pos;
+				EIC->CONFIG[idx].reg |= EIC_CONFIG_SENSE0_LOW_Val << pos;
 				SYS_LOG_DBG("Level - Low");
 			}
 		}
 
+		/* Filter external pin */
 		if (flags & GPIO_INT_DEBOUNCE) {
-			EIC->CONFIG[bank_num].reg |= BIT(pos + EIC_CONFIG_FILTEN0_Pos);
+			EIC->CONFIG[idx].reg |= BIT(pos + EIC_CONFIG_FILTEN0_Pos);
 		}
 
+		/* Enable wake-up from sleep modes */
 		EIC->WAKEUP.reg |= BIT(extint_num);
-		EIC->INTENSET.reg = EIC_INTENSET_EXTINT(BIT(extint_num));
 
-		
+		/* Enable the external interrupt */
+		EIC->INTENSET.reg = EIC_INTENSET_EXTINT(BIT(extint_num));
 #else
 		/* TODO(mlhx): implement. */
 		return -ENOTSUP;
@@ -463,18 +487,18 @@ static void eic_sam0_isr(void *arg)
 static int gpio_sam0_init(struct device *dev)
 {
 	if (!eic_peripheral_is_enabled) {
+		IRQ_CONNECT(CONFIG_EIC_SAM0_IRQ, CONFIG_EIC_SAM0_IRQ_PRIORITY,
+			    eic_sam0_isr, NULL, 0);
+
+		irq_enable(CONFIG_EIC_SAM0_IRQ);
+
 		/* Enable the GCLK */
 		GCLK->CLKCTRL.reg = GCLK_CLKCTRL_ID_EIC	|
 			GCLK_CLKCTRL_GEN_GCLK0 |
 			GCLK_CLKCTRL_CLKEN;
 
 		/* Disable all external interrupts */
-		EIC->INTENCLR.reg = EIC_INTENSET_MASK;
-
-		IRQ_CONNECT(CONFIG_EIC_SAM0_IRQ, CONFIG_EIC_SAM0_IRQ_PRIORITY,
-			    eic_sam0_isr, NULL, 0);
-
-		irq_enable(CONFIG_EIC_SAM0_IRQ);
+		/* EIC->INTENCLR.reg = EIC_INTENSET_MASK; */
 
 		EIC->CTRL.bit.ENABLE = 1;
 
